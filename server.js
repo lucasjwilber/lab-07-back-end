@@ -13,14 +13,14 @@ const PORT = process.env.PORT || 3003;
 
 app.get('/location', handleLocation);
 app.get('/weather', handleWeather);
-app.get('/trails', handleTrail);
+app.get('/trails', handleTrails);
 app.get('*', handleError);
 
 
 //cached data:
 let storedUrls = {};
 
-function handleTrail(request, response) {
+function handleTrails(request, response) {
   const trail = request.query.data;
   console.log(`trail: ${trail}`);
   const url = `https://www.hikingproject.com/data/get-trails?lat=40.0274&lon=-105.2519&maxDistance=10&key=${process.env.TRAILS_API_KEY}`;
@@ -30,48 +30,66 @@ function handleTrail(request, response) {
     console.log('using cached url');
     response.send(storedUrls[url]);
   } else {
-    console.log('making the api call to get weather info');
+    console.log('making the api call to trails');
     superagent.get(url)
       .then(resultsFromSuperagent => {
-        let routeOfTrails = resultsFromSuperagent.body.daily.data;
-        console.log(routeOfTrails);
-        let routeArray = routeOfTrails.map(route => {
-          console.log('array of route', routeArray);
-          response.status(200).send(weatherArray);
+        let trailsArr = resultsFromSuperagent.body.trails;
+        console.log(trailsArr);
+        let returnedTrailObjs = [];
+        trailsArr.forEach(obj => {
+          returnedTrailObjs.push(new Trail(obj));
+        });
+        console.log(returnedTrailObjs);
+        storedUrls[url] = returnedTrailObjs;
+        response.status(200).send(returnedTrailObjs);
 
-          return new Trail(route);
-        })
       })
-      .catch(error => {
-        console.error('Error getting location info.');
-      })
+      .catch((error) => {
+        console.error(error);
+        response.status(500).send('server error.');
+      });
 
   }
+}
+
+// delete appObj.a;
+
+
+function Trail(obj) {
+  this.name = obj.name;
+  this.location = obj.location;
+  this.length = obj.length;
+  this.stars = obj.stars;
+  this.star_votes = obj.star_votes;
+  this.summary = obj.summary;
+  this.trail_url = obj.trail_url;
+  this.conditions = obj.conditionStatus;
+  this.condition_date = obj.conditionDate.split(' ')[0];
+  this.condition_time = obj.conditionDate.split(' ')[1];
 }
 
 
 
 function handleLocation(request, response) {
   const location = request.query.data;
-  console.log(`location: ${location}`);
   const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${location}&key=${process.env.GEOCODE_API_KEY}`;
 
   if (storedUrls[url]) {
     console.log('using cached url');
     response.send(storedUrls[url]);
   } else {
-    console.log('making the api call to get location info');
+    console.log('making the api call to geocode');
     superagent.get(url)
       .then(resultsFromSuperagent => {
-        console.log(resultsFromSuperagent.body.results[0]);
         const locationObject = new Location(location, resultsFromSuperagent.body.results[0]);
         storedUrls[url] = locationObject;
         response.status(200).send(locationObject);
-        console.log('done using superagent for location info');
+        console.log('done using superagent for geocode');
       })
-      .catch(error => {
-        console.error('Error getting location info.');
-      })
+      .catch((error) => {
+        console.error(error);
+        response.status(500).send('server error.');
+      });
   }
 }
 
@@ -84,33 +102,15 @@ function Location(location, geoData) {
 }
 
 function handleWeather(request, response) {
-  console.log('weather info:');
   const locationObj = request.query.data;
-  console.log(locationObj);
-  const latitude = locationObj.latitude;
-  console.log('latitude:', latitude);
-  const longitude = locationObj.longitude;
 
-  // const tempArray = [];
-
-  // darkskyData.daily.data.forEach(object => {
-  //   let tempValue = new Weather(object);
-  //   tempArray.push(tempValue);
-  // })
-  // try {
-  //   response.status(200).send(tempArray);
-  // }
-  // catch (error) {
-  //   Error(error, response)
-  // }
-  console.log(latitude, longitude);
-  const url = `https://api.darksky.net/forecast/${process.env.DARKSKY_API_KEY}/${latitude},${longitude}`;
+  const url = `https://api.darksky.net/forecast/${process.env.DARKSKY_API_KEY}/${locationObj.latitude},${locationObj.longitude}`;
 
   if (storedUrls[url]) {
     console.log('using cached url');
     response.send(storedUrls[url]);
   } else {
-    console.log('making the api call to get weather info');
+    console.log('making the api call to darksky');
     superagent.get(url)
       .then(resultsFromSuperagent => {
         let daysOfWeather = resultsFromSuperagent.body.daily.data;
@@ -119,11 +119,12 @@ function handleWeather(request, response) {
           return new Weather(day);
         });
 
-        console.log('array of weather', weatherArray);
+        console.log('done calling the darksky API');
         response.status(200).send(weatherArray);
       })
-      .catch(error => {
-        console.error('Error');
+      .catch((error) => {
+        console.error(error);
+        response.status(500).send('server error.');
       });
   };
 };
